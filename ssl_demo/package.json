@@ -1,0 +1,11 @@
+{
+    "name": "ssl-tls-browser-demo",
+    "version": "1.0.0",
+    "description": "Demonstration of browser SSL/TLS",
+    "main": "server.js",
+    "scripts": {
+        "server": "node server.js",
+        "client": "node client.js",
+        "handshake": "node handshake.js"
+    }
+}

@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MITM Test Results</title>
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --surface: #ffffff;
+    --text: #1d1d1f;
+    --muted: #5f6368;
+    --border: #e2e2de;
+    --accent: #2f6fde;
+    --ok: #1a7f4b;
+    --ok-bg: #e5f4ec;
+    --bad: #b42318;
+    --bad-bg: #fdecea;
+    --code-bg: #f0f0ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111214;
+      --surface: #1a1b1e;
+      --text: #ececec;
+      --muted: #a0a4ab;
+      --border: #2c2e33;
+      --accent: #7aa7ff;
+      --ok: #5fd39a;
+      --ok-bg: #16301f;
+      --bad: #ff8a80;
+      --bad-bg: #3a1a18;
+      --code-bg: #24262a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111214;
+    --surface: #1a1b1e;
+    --text: #ececec;
+    --muted: #a0a4ab;
+    --border: #2c2e33;
+    --accent: #7aa7ff;
+    --ok: #5fd39a;
+    --ok-bg: #16301f;
+    --bad: #ff8a80;
+    --bad-bg: #3a1a18;
+    --code-bg: #24262a;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 8px; }
+  h2 { font-size: 1.35rem; margin: 48px 0 12px; }
+  p { margin: 0 0 14px; }
+  .lead { color: var(--muted); font-size: 1.1rem; }
+  code {
+    font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: 14px 16px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font: 0.9rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  pre code { background: none; padding: 0; }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  tr:last-child td { border-bottom: none; }
+  td.num { color: var(--muted); width: 2.5em; }
+
+  .pill {
+    display: inline-block;
+    padding: 1px 9px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .pill.ok { color: var(--ok); background: var(--ok-bg); }
+  .pill.bad { color: var(--bad); background: var(--bad-bg); }
+
+  .matrix td, .matrix th { text-align: center; }
+  .matrix td:first-child, .matrix th:first-child { text-align: left; }
+
+  .callout {
+    border-left: 4px solid var(--accent);
+    background: var(--surface);
+    padding: 14px 18px;
+    border-radius: 0 10px 10px 0;
+    margin: 20px 0;
+  }
+  .callout.warn { border-left-color: var(--bad); }
+
+  figure { margin: 0; }
+  figure img {
+    width: 100%;
+    height: auto;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    display: block;
+  }
+  figcaption { color: var(--muted); font-size: 0.9rem; margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>Man-in-the-middle test results</h1>
+  <p class="lead">What happens when an attacker sits between a TLS client and the real server, tested against <code>server.js</code> with <code>mitm.js</code>.</p>
+
+  <h2>How to run it</h2>
+  <pre><code>npm run server     # terminal 1
+npm run mitm       # terminal 2  (add -- --verbose for every detail)</code></pre>
+  <p>The script plays three roles: the <strong>victim</strong> (a normal client that checks certificates), the <strong>attacker</strong>, and the <strong>real server</strong> (<code>server.js</code>). The victim sends a login request containing <code>password=hunter2</code>, and the attacker's goal is to read it.</p>
+
+  <h2>How the attacker gets into the middle</h2>
+  <p>Before any attack, the victim's traffic goes <code>victim → router → server</code>. Each method below changes one part of the victim's network so the traffic reaches the attacker instead.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Method</th><th>What changes</th><th>Path after the change</th></tr></thead>
+      <tbody>
+        <tr><td><strong>DNS spoofing</strong></td><td>The DNS answer for the server's name points to the attacker's IP</td><td>victim → router → attacker</td></tr>
+        <tr><td><strong>ARP spoofing</strong></td><td>The victim's ARP cache says the router's IP belongs to the attacker's network card</td><td>victim → attacker → server</td></tr>
+        <tr><td><strong>Evil twin Wi-Fi</strong></td><td>The victim joins the attacker's access point, which has the same name as the real one</td><td>victim → attacker's access point → router → server</td></tr>
+        <tr><td><strong>Compromised router</strong></td><td>The attacker controls the router the victim uses</td><td>victim → router (attacker's) → server</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <p><strong>These four methods are simulated.</strong> The script keeps a small model of the victim's network and each method changes one part of it. If the attacker ends up in the path, the victim's connection goes to the attacker's port on the same machine. No packets go to any real network, router or device.</p>
+    <p style="margin:0">From that point on everything is real: TLS servers, relays, certificates and tampering, over real sockets on <code>localhost</code>.</p>
+  </div>
+
+  <h2>The attacks</h2>
+  <p>Each attack is run once through every method above.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>What the attacker tries</th><th>What happened</th><th>Why it failed</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="num">1</td>
+          <td>Sends the real server's certificate as their own</td>
+          <td><span class="pill ok">blocked</span><br>The certificate was easy to get, but it can't be used with the attacker's key (<code>key values mismatch</code>)</td>
+          <td>The server must sign the handshake with <code>server.key</code>, which the attacker doesn't have</td>
+        </tr>
+        <tr>
+          <td class="num">2</td>
+          <td>Their own self-signed certificate for <code>localhost</code></td>
+          <td><span class="pill ok">blocked</span><br><code>DEPTH_ZERO_SELF_SIGNED_CERT</code></td>
+          <td>Anyone can write "localhost" in a certificate; no trusted CA signed this one</td>
+        </tr>
+        <tr>
+          <td class="num">3</td>
+          <td>A <code>localhost</code> certificate signed by their own CA</td>
+          <td><span class="pill ok">blocked</span><br><code>SELF_SIGNED_CERT_IN_CHAIN</code></td>
+          <td>The attacker's CA is not in the victim's trusted list</td>
+        </tr>
+        <tr>
+          <td class="num">4</td>
+          <td>A trusted certificate, but for <code>evil.example</code></td>
+          <td><span class="pill ok">blocked</span><br><code>ERR_TLS_CERT_ALTNAME_INVALID</code></td>
+          <td>The certificate's name must match the host the victim asked for</td>
+        </tr>
+        <tr>
+          <td class="num">5</td>
+          <td>Relays everything untouched and records it</td>
+          <td><span class="pill ok">blocked</span><br>About 5,000 bytes captured, with no password and no readable HTTP</td>
+          <td>The shared key is computed from private keys that never cross the network</td>
+        </tr>
+        <tr>
+          <td class="num">6</td>
+          <td>Relays, but swaps the server's key share</td>
+          <td><span class="pill ok">blocked</span><br>Victim aborts: <code>bad record mac</code></td>
+          <td>Handshake messages are protected by keys derived from the key shares, and the signature covers them</td>
+        </tr>
+        <tr>
+          <td class="num">7</td>
+          <td>Relays, but flips one bit in the encrypted request</td>
+          <td><span class="pill ok">blocked</span><br>Server rejects the record and closes the connection</td>
+          <td>Every record carries an authentication tag made with the session key</td>
+        </tr>
+        <tr>
+          <td class="num">8</td>
+          <td>Replays the session recorded in case 5</td>
+          <td><span class="pill ok">blocked</span><br>Server sends different random values, then drops the connection</td>
+          <td>Every connection gets new keys, so the old records no longer decrypt</td>
+        </tr>
+        <tr>
+          <td class="num">9</td>
+          <td>Answers in plain HTTP instead of TLS</td>
+          <td><span class="pill ok">blocked</span><br><code>ERR_SSL_WRONG_VERSION_NUMBER</code></td>
+          <td>The victim expects a TLS Server Hello, and only sends the request after a successful handshake</td>
+        </tr>
+        <tr>
+          <td class="num">10</td>
+          <td>Same as case 2, but the victim uses <code>rejectUnauthorized: false</code></td>
+          <td><span class="pill bad">succeeded</span><br>Attacker reads <code>password=hunter2</code>; the victim notices nothing</td>
+          <td>Encryption worked, but with the attacker. TLS only stops a man in the middle if the client checks who it is talking to</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p style="margin-top:14px">In cases 2, 3, 4 and 9 the password is never even sent, because the victim only sends its request after the certificate checks pass.</p>
+
+  <h2>Results: every attack through every method</h2>
+
+  <div class="table-wrap">
+    <table class="matrix">
+      <thead><tr><th>Attack</th><th>DNS</th><th>ARP</th><th>Evil twin</th><th>Router</th></tr></thead>
+      <tbody>
+        <tr><td>1. Reuse real certificate</td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td></tr>
+        <tr><td>2. Self-signed certificate</td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td></tr>
+        <tr><td>3. Own CA</td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td></tr>
+        <tr><td>4. Wrong domain</td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td></tr>
+        <tr><td>5. Eavesdrop</td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td></tr>
+        <tr><td>6. Swap key share</td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td></tr>
+        <tr><td>7. Modify data</td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td></tr>
+        <tr><td>8. Replay</td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td></tr>
+        <tr><td>9. Strip TLS</td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td><td><span class="pill ok">blocked</span></td></tr>
+        <tr><td>10. No verification</td><td><span class="pill bad">succeeded</span></td><td><span class="pill bad">succeeded</span></td><td><span class="pill bad">succeeded</span></td><td><span class="pill bad">succeeded</span></td></tr>
+        <tr><td>11. Real client and real server</td><td colspan="4"><span class="pill ok">secure connection established</span> &nbsp;<code>HTTP/1.1 200 OK</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <p style="margin:0"><strong>Every row is the same in all four columns.</strong> Getting into the middle only decides where the victim's packets go. TLS never looks at IP or MAC addresses, only at the certificate and the signature, so the method doesn't matter.</p>
+  </div>
+
+  <div class="callout warn">
+    <p style="margin:0"><strong>The only attack that works is case 10</strong>, and it is the only case where the victim's settings change. Never switch off certificate verification (<code>rejectUnauthorized: false</code>) outside a test.</p>
+  </div>
+
+  <h2>Why the real connection passes</h2>
+  <p>In case 11 the victim checks three things, and the real server passes all of them:</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Check</th><th>Real server</th><th>Attacker</th></tr></thead>
+      <tbody>
+        <tr><td>Certificate chains to a CA the victim trusts</td><td><span class="pill ok">yes</span></td><td>Only by copying the real certificate (case 1)</td></tr>
+        <tr><td>Certificate name matches the requested host</td><td><span class="pill ok">yes</span></td><td>Only by copying the real certificate (case 1)</td></tr>
+        <tr><td>Handshake is signed with the certificate's private key</td><td><span class="pill ok">yes</span>, it holds <code>server.key</code></td><td><span class="pill bad">no</span>, which is why case 1 fails</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Flow</h2>
+  <figure>
+    <img src="mitm-flow.png" alt="Sequence diagram with three columns: Victim, Attacker and Real Server. Attack A: the attacker pretends to be the server and the victim aborts because the certificate check fails. Attack B: the attacker relays traffic and swaps the key share, and the victim aborts with a bad record MAC. Real flow: Client Hello, Server Hello, certificate and signature, Finished messages, then the encrypted HTTP request and response.">
+    <figcaption>Attack A: pretending to be the server. Attack B: relaying and tampering. Bottom: the real flow with no attacker. An interactive version is in <a href="mitm-flow.html">mitm-flow.html</a>.</figcaption>
+  </figure>
+
+</main>
+</body>
+</html>

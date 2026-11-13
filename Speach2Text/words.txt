@@ -1,0 +1,15 @@
+hello
+goodbye
+yes
+no
+stop
+go
+up
+down
+left
+right
+one
+two
+three
+help
+usman
